@@ -12,9 +12,9 @@ impl EffectcraftApp {
         self.applied_prefs = Some((self.session.prefs_revision, system));
         let p = &self.session.prefs;
         self.ui.theme = theme::ThemeKind::from_name(p.appearance.resolved_theme(system)).unwrap_or_default();
-        self.tokens = Tokens::from_prefs(p, self.ui.theme);
+        self.tokens = Tokens::from_prefs_with_palette(p, self.ui.theme, self.palette.as_ref());
         theme::apply_visuals(ctx, &self.tokens);
-        ctx.set_theme(theme::theme_preference(&p.appearance.appearance_mode, self.ui.theme.is_light()));
+        ctx.set_theme(theme::theme_preference(&p.appearance.appearance_mode, self.tokens.kind.is_light()));
         let tips = p.general.show_tool_tips;
         ctx.all_styles_mut(|s| s.interaction.tooltip_delay = if tips { 0.5 } else { f32::INFINITY });
         // Settings ▸ Appearance ▸ UI Scale (#284). egui's own Ctrl+= / Ctrl+- / Ctrl+0 zoom stays
@@ -24,6 +24,27 @@ impl EffectcraftApp {
         self.ui.cache_when_idle = p.previews.cache_frames_when_idle;
         self.ui.viewer.fast_preview = p.previews.fast_previews;
         self.frames.set_budget(p.cache_budgets(self.session.sys_memory).preview);
+    }
+
+    /// Watch the suite palette while the window is visible and reapply the theme when it changes.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn poll_palette(&mut self, ctx: &egui::Context) {
+        if !ctx.input(|input| input.viewport().visible().unwrap_or(true)) {
+            return;
+        }
+        if self.palette_watcher.is_none() {
+            self.palette_watcher = Some(craft_ui::theme::palette::PaletteWatcher::from_env());
+            if let Some(loaded) = craft_ui::theme::palette::Palette::load() {
+                self.palette = Some(loaded.palette);
+                self.applied_prefs = None;
+            }
+        }
+        let Some(watcher) = self.palette_watcher.as_mut() else { return };
+        let Some(loaded) = watcher.poll(ctx) else { return };
+        if self.palette.as_ref() != Some(&loaded.palette) {
+            self.palette = Some(loaded.palette);
+            self.applied_prefs = None;
+        }
     }
 
     /// Change settings from the UI (applied next frame and saved).

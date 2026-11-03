@@ -48,6 +48,9 @@ use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
 
 pub use control::ControlRequest;
+use craft_ui::theme::palette::Palette;
+#[cfg(not(target_arch = "wasm32"))]
+use craft_ui::theme::palette::PaletteWatcher;
 use dock::{PanelKind, WorkspaceExt as _};
 use effectcraft_engine::Session;
 use effectcraft_engine::project::ItemId;
@@ -250,6 +253,11 @@ pub struct EffectcraftApp {
     pub ui: UiState,
     workspace_store: workspace_state::WorkspaceStore,
     pub tokens: Tokens,
+    /// The suite palette last read, if any; its core colours override the built-in theme.
+    palette: Option<Palette>,
+    /// Watches the discovered palette file (native only; the web build keeps the built-in theme).
+    #[cfg(not(target_arch = "wasm32"))]
+    palette_watcher: Option<PaletteWatcher>,
     pub auto: automation::Registry,
     pub frames: Frames,
     pub playback: Playback,

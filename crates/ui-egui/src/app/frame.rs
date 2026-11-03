@@ -140,6 +140,8 @@ impl EffectcraftApp {
         // fallback (a logic-only tick leaves it at the previous pass's value).
         let focused = ctx.input(|i| i.viewport().focused.or(Some(i.focused)));
         self.focused = focused.unwrap_or(self.focused);
+        #[cfg(not(target_arch = "wasm32"))]
+        self.poll_palette(ctx);
         // The interface language's fallback fonts are installed in `draw` (fonts need a pass), but
         // commands handled here use the right catalog already.
         let language = crate::i18n::language(self);
