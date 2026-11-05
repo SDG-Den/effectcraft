@@ -248,6 +248,21 @@ fn settings_overlay_wins_over_saved_preferences() {
     let _ = std::fs::remove_dir_all(d);
 }
 
+/// The overlay applies on a first run too, when no `prefs.json` exists yet.
+#[test]
+fn settings_overlay_applies_without_saved_preferences() {
+    let d = tmp("overlay-no-prefs");
+    let dir = d.join("config");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join(craft_settings::overlay::OVERLAY_FILE), r#"{"general": {"undoLevels": 64}, "autoSave": {"intervalMinutes": 5}}"#).unwrap();
+    let store: Arc<dyn ConfigStore> = Arc::new(DirConfig::new(&dir));
+    let mut s = Session { config: Some(store), ..Default::default() };
+    s.load_settings();
+    assert_eq!(s.prefs.general.undo_levels, 64);
+    assert_eq!(s.prefs.auto_save.interval_minutes, 5);
+    let _ = std::fs::remove_dir_all(d);
+}
+
 /// Effects & Presets' starred effects live in the settings (#1692): they come back in the next
 /// session, un-starring sticks too, Reset All keeps them, and a hand-edited list loses its
 /// repeats and empty ids on load.

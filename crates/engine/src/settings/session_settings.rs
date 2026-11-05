@@ -33,9 +33,10 @@ impl Session {
     /// them.
     pub fn load_settings(&mut self) {
         if let Some(c) = &self.config {
-            if let Some(t) = c.read(PREFS_FILE) {
-                self.prefs = Prefs::from_json(&prefs_with_overlay(&t, c.as_ref()));
-            }
+            // The overlay must apply on a first run too: a missing `prefs.json` is an empty
+            // document, not a reason to skip the package manager's values.
+            let saved = c.read(PREFS_FILE).unwrap_or_default();
+            self.prefs = Prefs::from_json(&prefs_with_overlay(&saved, c.as_ref()));
             if let Some(t) = c.read(SHORTCUTS_FILE) {
                 self.keymaps = Keymaps::from_json(&t);
             }
