@@ -229,6 +229,25 @@ fn prefs_commands_get_set_reset_and_persist() {
     );
 }
 
+/// The read-only `settings.override.json` a package manager writes wins over `prefs.json` at
+/// load, without replacing the saved file.
+#[test]
+fn settings_overlay_wins_over_saved_preferences() {
+    let d = tmp("overlay");
+    let dir = d.join("config");
+    let store: Arc<dyn ConfigStore> = Arc::new(DirConfig::new(&dir));
+    let mut s = Session { config: Some(store.clone()), ..Default::default() };
+    s.prefs.general.recent_items = 4;
+    s.save_prefs();
+    let overlay = dir.join(craft_settings::overlay::OVERLAY_FILE);
+    std::fs::write(&overlay, r#"{"general": {"recentItems": 9}}"#).unwrap();
+    let mut s2 = Session { config: Some(store), ..Default::default() };
+    s2.load_settings();
+    assert_eq!(s2.prefs.general.recent_items, 9);
+    assert_eq!(std::fs::read_to_string(&overlay).unwrap(), r#"{"general": {"recentItems": 9}}"#);
+    let _ = std::fs::remove_dir_all(d);
+}
+
 /// Effects & Presets' starred effects live in the settings (#1692): they come back in the next
 /// session, un-starring sticks too, Reset All keeps them, and a hand-edited list loses its
 /// repeats and empty ids on load.

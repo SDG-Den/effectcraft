@@ -88,8 +88,15 @@
       );
 
       checks = forAllSystems (
-        pkgs: system: {
+        pkgs: system:
+        let
           effectcraft = self.packages.${system}.effectcraft;
+        in
+        {
+          effectcraft = effectcraft;
+
+          # Both module entry points evaluate with `enable = true` (no full NixOS evaluation).
+          modules = pkgs.callPackage ./nix/module-check.nix { inherit effectcraft; };
 
           # `nix fmt` formats the flake; this keeps it formatted.
           formatting =
@@ -102,5 +109,21 @@
       );
 
       formatter = forAllSystems (pkgs: _: pkgs.nixfmt);
+
+      # Both modules take the package from this flake unless `programs.effectcraft.package` is
+      # set, so `nixosModules.default`/`homeManagerModules.default` work without the overlay.
+      nixosModules.default =
+        { pkgs, ... }:
+        {
+          imports = [ (import ./nix/module.nix { kind = "nixos"; }) ];
+          _module.args.effectcraftPackage = self.packages.${pkgs.stdenv.hostPlatform.system}.effectcraft;
+        };
+
+      homeManagerModules.default =
+        { pkgs, ... }:
+        {
+          imports = [ (import ./nix/module.nix { kind = "home-manager"; }) ];
+          _module.args.effectcraftPackage = self.packages.${pkgs.stdenv.hostPlatform.system}.effectcraft;
+        };
     };
 }

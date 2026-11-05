@@ -5,7 +5,7 @@
 #
 # Kept in step with the release workflow (.github/workflows/release.yml) and packaging/:
 #   * `Cargo.lock` drives the dependencies (`cargoLock`), so there is no vendorHash to bump. The
-#     git sources (storytold/craft-libs, storytold/filmcraft) are fetched at the revision the lock file pins;
+#     git sources (craft-libs, storytold/filmcraft) are fetched at the revision the lock file pins;
 #   * the desktop file, hicolor icons, MIME types and AppStream metadata are the same files the
 #     .deb/.rpm ship (packaging/linux/), so `apt` and NixOS users see one identical EffectCraft;
 #   * `doCheck` is off: the test suite needs corpora and a GPU the Nix sandbox cannot provide
@@ -65,7 +65,8 @@ let
 
   # Libraries the binaries open at run time with dlopen(): nothing links them, so no RPATH points at
   # them. winit loads libwayland-client, libxkbcommon(-x11) and the X11 libraries; wgpu loads the
-  # Vulkan loader or libEGL (libglvnd); rfd loads libdbus-1 for the file chooser portal. NixOS patches the loader to find the drivers in
+  # Vulkan loader or libEGL (libglvnd); rfd loads libdbus-1 for the file chooser portal; cpal
+  # opens the ALSA plug-ins. NixOS patches the loader to find the drivers in
   # /run/opengl-driver. The wrapper below points LD_LIBRARY_PATH here.
   runtimeLibs = lib.optionals isLinux [
     libxkbcommon
@@ -78,6 +79,8 @@ let
     vulkan-loader
     libglvnd
     dbus
+    # cpal opens the ALSA plug-ins at run time (PipeWire/PulseAudio through them).
+    alsa-lib
   ];
 
   # The two native binaries. The wasm app (apps/effectcraft-web) is built by `cargo xtask`, not here.

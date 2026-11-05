@@ -7,13 +7,34 @@ use crate::prefs::{PREFS_FILE, Prefs};
 use crate::shortcuts::{Keymaps, SHORTCUTS_FILE, ShortcutTable, UiCommand};
 use crate::{EngineError, Result, Session};
 
+/// `prefs.json` with the read-only `settings.override.json` merged over it.
+///
+/// A package manager (the NixOS and home-manager modules) or a hand edit writes the overlay, so
+/// its values win over the saved file and are never written back. Native only: the browser has no
+/// filesystem.
+#[cfg(not(target_arch = "wasm32"))]
+fn prefs_with_overlay(text: &str, store: &dyn crate::config::ConfigStore) -> String {
+    let mut base: serde_json::Value = serde_json::from_str(text).unwrap_or_else(|_| serde_json::json!({}));
+    if let Some(dir) = store.dir()
+        && let Some(overlay) = craft_settings::overlay::load_overlay(&dir)
+    {
+        craft_settings::overlay::merge(&mut base, overlay);
+    }
+    base.to_string()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn prefs_with_overlay(text: &str, _store: &dyn crate::config::ConfigStore) -> String {
+    text.to_string()
+}
+
 impl Session {
     /// Load settings, shortcut presets and scripts' settings from the config store and apply
     /// them.
     pub fn load_settings(&mut self) {
         if let Some(c) = &self.config {
             if let Some(t) = c.read(PREFS_FILE) {
-                self.prefs = Prefs::from_json(&t);
+                self.prefs = Prefs::from_json(&prefs_with_overlay(&t, c.as_ref()));
             }
             if let Some(t) = c.read(SHORTCUTS_FILE) {
                 self.keymaps = Keymaps::from_json(&t);
