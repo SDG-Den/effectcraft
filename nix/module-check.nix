@@ -102,7 +102,49 @@ let
   home = evalModule "home-manager" true { author = "Nix"; };
   homePlain = evalModule "home-manager" false { };
 
+  binaryStub = pkgs.runCommand "effectcraft-binary-stub" { } "touch $out";
+
+  evalDefault =
+    useBinary: binary:
+    lib.evalModules {
+      specialArgs = {
+        inherit pkgs;
+        effectcraftSourcePackage = effectcraft;
+        effectcraftBinaryPackage = binary;
+      };
+      modules = [
+        (import ./module.nix { kind = "nixos"; })
+        nixosStub
+        {
+          programs.effectcraft = {
+            enable = true;
+            inherit useBinary;
+          };
+        }
+      ];
+    };
+
+  nixosDefault = evalDefault true binaryStub;
+  nixosNoBinary = evalDefault true null;
+  nixosSourceChosen = evalDefault false binaryStub;
+
   assertions = [
+    {
+      what = "useBinary defaults to true";
+      ok = nixosDefault.config.programs.effectcraft.useBinary;
+    }
+    {
+      what = "the binary is the default package";
+      ok = nixosDefault.config.environment.systemPackages == [ binaryStub ];
+    }
+    {
+      what = "the source build is used without a binary";
+      ok = nixosNoBinary.config.environment.systemPackages == [ effectcraft ];
+    }
+    {
+      what = "useBinary = false selects the source build";
+      ok = nixosSourceChosen.config.environment.systemPackages == [ effectcraft ];
+    }
     {
       what = "nixos installs the package";
       ok = nixos.config.environment.systemPackages == [ effectcraft ];
