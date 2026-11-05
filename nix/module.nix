@@ -16,6 +16,10 @@
   # The package of this flake; `flake.nix` passes it through `_module.args`, so importing the
   # module directly needs no overlay.
   effectcraftPackage ? pkgs.effectcraft,
+  # `flake.nix` passes the source build and the pre-built release binary separately. Importing the
+  # module directly falls back to `effectcraftPackage` and no binary.
+  effectcraftSourcePackage ? effectcraftPackage,
+  effectcraftBinaryPackage ? null,
   ...
 }:
 
@@ -47,10 +51,24 @@ in
   options.programs.effectcraft = {
     enable = mkEnableOption "EffectCraft";
 
+    useBinary = mkOption {
+      type = types.bool;
+      default = true;
+      description = ''
+        Install the pre-built Linux binary from `binary-url.json` when this system has one,
+        instead of building from source. Falls back to the source build when the file is missing
+        or the system is unsupported.
+      '';
+    };
+
     package = mkOption {
       type = types.package;
-      default = effectcraftPackage;
-      defaultText = lib.literalMD "the `effectcraft` package of this flake";
+      default =
+        if cfg.useBinary && effectcraftBinaryPackage != null then
+          effectcraftBinaryPackage
+        else
+          effectcraftSourcePackage;
+      defaultText = lib.literalMD "the pre-built binary from `binary-url.json`, or the source build";
       description = "The EffectCraft package to install.";
     };
 
