@@ -6,6 +6,7 @@
 
 use std::sync::Arc;
 
+use craft_ui::theme::palette::Palette;
 #[cfg(not(target_arch = "wasm32"))]
 use egui::FontTweak;
 #[cfg(not(target_arch = "wasm32"))]
@@ -253,6 +254,40 @@ impl Tokens {
         }
     }
 
+    /// The built-in tokens for `kind`, with the suite palette's core chrome colours applied.
+    ///
+    /// The palette decides the light or dark family: a palette added to a theme of the other
+    /// family keeps that family's variants (Darker stays Darker for a dark palette). Timeline,
+    /// keyframe, cache, effect and audio colours stay from the built-in theme.
+    pub fn for_palette(kind: ThemeKind, palette: &Palette) -> Tokens {
+        let kind = if palette.is_dark() == kind.is_light() { if palette.is_dark() { ThemeKind::Dark } else { ThemeKind::Light } } else { kind };
+        let mut t = Tokens::for_kind(kind);
+        t.app_bg = palette.background();
+        t.header_bg = palette.surface();
+        t.panel_bg = palette.surface();
+        t.tab_text = palette.text_muted();
+        t.tab_text_active = palette.text();
+        t.focus = palette.accent();
+        t.accent = palette.accent();
+        t.accent_hover = palette.accent().lerp_to_gamma(palette.text(), 0.2);
+        t.text = palette.text();
+        t.text_dim = palette.text_muted();
+        t.text_faint = palette.text_muted().lerp_to_gamma(palette.background(), 0.35);
+        t.icon = palette.text_muted();
+        t.icon_active = palette.text();
+        t.hover = palette.surface_alt();
+        t.pressed = palette.surface_alt().lerp_to_gamma(palette.text_muted(), 0.2);
+        t.field_bg = palette.background();
+        t.field_border = palette.outline();
+        t.separator = palette.outline();
+        t.row = palette.surface();
+        t.row_alt = palette.surface_alt();
+        t.row_selected = palette.accent().lerp_to_gamma(palette.surface(), 0.3);
+        t.danger = palette.danger();
+        t.warning = palette.warning();
+        t
+    }
+
     pub fn mono(size: f32) -> FontId {
         FontId::new(size, FontFamily::Monospace)
     }
@@ -275,7 +310,16 @@ impl Tokens {
     /// The tokens for theme `kind` (resolved from the appearance mode) with the rest of the
     /// Appearance settings: brightness, label colours, gradients.
     pub fn from_prefs(p: &effectcraft_engine::prefs::Prefs, kind: ThemeKind) -> Tokens {
-        let mut t = Tokens::for_kind(kind).with_brightness(p.appearance.brightness as f32);
+        Tokens::from_prefs_with_palette(p, kind, None)
+    }
+
+    /// [`Tokens::from_prefs`] with an optional suite palette over the built-in `kind` tokens.
+    pub fn from_prefs_with_palette(p: &effectcraft_engine::prefs::Prefs, kind: ThemeKind, palette: Option<&Palette>) -> Tokens {
+        let mut t = match palette {
+            Some(palette) => Tokens::for_palette(kind, palette),
+            None => Tokens::for_kind(kind),
+        }
+        .with_brightness(p.appearance.brightness as f32);
         for (i, l) in effectcraft_color::Label::ALL.iter().enumerate() {
             let [r, g, b] = p.label_rgb(*l);
             t.labels[i] = Color32::from_rgb(r, g, b);
@@ -853,6 +897,116 @@ mod script_font_tests {
                 }
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod palette_tests {
+    use super::*;
+
+    fn channel_luminance(value: u8) -> f32 {
+        let v = value as f32 / 255.0;
+        if v <= 0.04045 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+    }
+
+    fn relative_luminance(c: Color32) -> f32 {
+        0.2126 * channel_luminance(c.r()) + 0.7152 * channel_luminance(c.g()) + 0.0722 * channel_luminance(c.b())
+    }
+
+    fn contrast_ratio(a: Color32, b: Color32) -> f32 {
+        let (a, b) = (relative_luminance(a), relative_luminance(b));
+        (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+
+    #[test]
+    fn dark_palette_maps_the_core_chrome() {
+        let palette = Palette::dark();
+        let tokens = Tokens::for_palette(ThemeKind::Dark, &palette);
+        assert_eq!(tokens.app_bg, palette.background());
+        assert_eq!(tokens.header_bg, palette.surface());
+        assert_eq!(tokens.panel_bg, palette.surface());
+        assert_eq!(tokens.text, palette.text());
+        assert_eq!(tokens.text_dim, palette.text_muted());
+        assert_eq!(tokens.accent, palette.accent());
+        assert_eq!(tokens.focus, palette.accent());
+        assert_eq!(tokens.field_bg, palette.background());
+        assert_eq!(tokens.field_border, palette.outline());
+        assert_eq!(tokens.separator, palette.outline());
+        assert_eq!(tokens.row, palette.surface());
+        assert_eq!(tokens.row_alt, palette.surface_alt());
+        assert_eq!(tokens.danger, palette.danger());
+        assert_eq!(tokens.warning, palette.warning());
+        assert_eq!(tokens.kind, ThemeKind::Dark);
+    }
+
+    #[test]
+    fn light_palette_maps_the_core_chrome() {
+        let palette = Palette::light();
+        let tokens = Tokens::for_palette(ThemeKind::Light, &palette);
+        assert_eq!(tokens.app_bg, palette.background());
+        assert_eq!(tokens.panel_bg, palette.surface());
+        assert_eq!(tokens.text, palette.text());
+        assert_eq!(tokens.accent, palette.accent());
+        assert_eq!(tokens.field_bg, palette.background());
+        assert_eq!(tokens.danger, palette.danger());
+        assert_eq!(tokens.warning, palette.warning());
+        assert_eq!(tokens.kind, ThemeKind::Light);
+    }
+
+    #[test]
+    fn the_palette_family_overrides_a_mismatched_saved_kind() {
+        let dark = Tokens::for_palette(ThemeKind::Light, &Palette::dark());
+        assert_eq!(dark.kind, ThemeKind::Dark);
+        assert!(!dark.kind.is_light());
+        let light = Tokens::for_palette(ThemeKind::Dark, &Palette::light());
+        assert_eq!(light.kind, ThemeKind::Light);
+        assert!(light.kind.is_light());
+        // A matching family keeps the saved variant, so a dark palette on Darker stays Darker.
+        assert_eq!(Tokens::for_palette(ThemeKind::Darker, &Palette::dark()).kind, ThemeKind::Darker);
+    }
+
+    #[test]
+    fn without_a_palette_the_saved_kind_and_domain_colours_remain() {
+        let prefs = effectcraft_engine::prefs::Prefs::default();
+        let built_in = Tokens::from_prefs(&prefs, ThemeKind::Darker);
+        let fallback = Tokens::from_prefs_with_palette(&prefs, ThemeKind::Darker, None);
+        assert_eq!(fallback, built_in);
+        assert_eq!(fallback.kind, ThemeKind::Darker);
+
+        // A palette leaves the timeline, keyframe, cache, effect and audio colours from the
+        // built-in theme of the family it chose.
+        let palette = Tokens::for_palette(ThemeKind::Dark, &Palette::dark());
+        let built_in = Tokens::for_kind(ThemeKind::Dark);
+        for (mapped, original) in [
+            (palette.tl_bg, built_in.tl_bg),
+            (palette.tl_ruler_bg, built_in.tl_ruler_bg),
+            (palette.keyframe, built_in.keyframe),
+            (palette.cache_green, built_in.cache_green),
+            (palette.cache_blue, built_in.cache_blue),
+            (palette.fx_header, built_in.fx_header),
+            (palette.expr_text, built_in.expr_text),
+            (palette.timecode, built_in.timecode),
+            (palette.hot_text, built_in.hot_text),
+            (palette.pasteboard, built_in.pasteboard),
+        ] {
+            assert_eq!(mapped, original);
+        }
+    }
+
+    #[test]
+    fn contrast_text_is_readable_on_the_accent() {
+        for palette in [Palette::dark(), Palette::light()] {
+            let tokens = Tokens::for_palette(if palette.is_dark() { ThemeKind::Dark } else { ThemeKind::Light }, &palette);
+            assert_eq!(tokens.accent, palette.accent());
+            let ink = palette.contrast_text();
+            assert!(
+                contrast_ratio(tokens.accent, ink) >= 3.0,
+                "{} accent {:?} has only {:.2}:1 against {ink:?}",
+                palette.name,
+                tokens.accent,
+                contrast_ratio(tokens.accent, ink)
+            );
+        }
     }
 }
 

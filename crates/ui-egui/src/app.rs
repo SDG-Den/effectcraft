@@ -39,6 +39,9 @@ impl EffectcraftApp {
             ui,
             workspace_store,
             tokens: Tokens::for_kind(Default::default()),
+            palette: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            palette_watcher: None,
             auto: Default::default(),
             frames: Frames::default(),
             playback: Playback::default(),
